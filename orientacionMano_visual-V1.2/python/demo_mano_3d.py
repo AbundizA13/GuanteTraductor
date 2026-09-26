@@ -11,10 +11,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="vpython")
 from vpython import canvas, vector, box, compound, color, rate
 
 from fusion import actualizar, matriz
-
-PUERTO, BAUD = "COM5", 115200
-HAND_FWD = np.array([0.0, -1.0, 0.0])   # direccion de los dedos en ejes del chip
-HAND_UP = np.array([0.0, 0.0, 1.0])     # dorso de la mano (sale de la pantalla del reloj)
+from config import PUERTO, BAUD, HAND_FWD, HAND_UP
 
 ser = serial.Serial(PUERTO, BAUD, timeout=0.01)
 time.sleep(1.5)
@@ -69,6 +66,8 @@ def tecla(ev):
     global yaw0, HAND_FWD
     if ev.key == "i":
         HAND_FWD = -HAND_FWD
+        print(f"HAND_FWD invertido. Si ahora se ve bien, pon en config.py:\n"
+              f"    HAND_FWD = np.array({[float(v) + 0.0 for v in HAND_FWD]})")
     if ev.key in ("z", "i"):
         f = matriz(q) @ HAND_FWD
         yaw0 = math.atan2(f[1], f[0])

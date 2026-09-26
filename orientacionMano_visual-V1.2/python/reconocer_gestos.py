@@ -3,35 +3,61 @@
 Uso:   python reconocer_gestos.py            (Monitor Serie de Arduino CERRADO)
        python reconocer_gestos.py --debug    (imprime elevacion y picos del giroscopio)
 """
-import sys, time
+import queue, sys, threading, time
 import numpy as np
 import serial
 
 from fusion import actualizar, elevacion_deg
-from gestos import DetectorHola, DetectorBajada
+from gestos import Reconocedor
+from config import PUERTO, BAUD, HAND_FWD
 
 # ---------------- CONFIGURACION ----------------
-PUERTO = "COM5"                                # el puerto que veas en Administrador de dispositivos
-BAUD = 115200
 NOMBRE = "TU NOMBRE"                           # para la frase "Yo soy <nombre>"
-# Direccion de los dedos en ejes del chip. USA EL MISMO VALOR que te funciono en la
-# visualizacion 3D (tecla 'i' de demo_mano_3d invierte su signo).
-HAND_FWD = np.array([0.0, -1.0, 0.0])
 DEBUG = "--debug" in sys.argv
+# (PUERTO y HAND_FWD se cambian en config.py, compartido con demo_mano_3d.py)
 # -----------------------------------------------
+
+_frases = queue.Queue()
+
+
+def _hilo_voz():
+    """Habla en segundo plano para no frenar la lectura del puerto serie.
+
+    El motor se crea en este hilo (en Windows SAPI debe usarse desde el hilo que lo creo)
+    y se recrea en cada frase: evita el fallo conocido de pyttsx3 que deja de hablar
+    despues de la primera llamada a runAndWait().
+    """
+    import pyttsx3
+    try:
+        import comtypes                        # Windows: cada hilo que usa SAPI inicializa COM
+        comtypes.CoInitialize()
+    except ImportError:
+        pass
+    while True:
+        texto = _frases.get()
+        try:
+            voz = pyttsx3.init()
+            voz.say(texto)
+            voz.runAndWait()
+            voz.stop()
+            del voz
+        except Exception as e:
+            print(f"(voz) error: {e}")
+
 
 try:
     import pyttsx3                             # voz offline (pip install pyttsx3)
-    _voz = pyttsx3.init()
-except Exception:
-    _voz = None
+    threading.Thread(target=_hilo_voz, daemon=True).start()
+    _hay_voz = True
+except ImportError:
+    _hay_voz = False
+    print("(pyttsx3 no instalado: solo se imprimiran las palabras)")
 
 
 def decir(texto):
     print(f">>> {texto}")
-    if _voz:
-        _voz.say(texto)
-        _voz.runAndWait()
+    if _hay_voz:
+        _frases.put(texto)
 
 
 ser = serial.Serial(PUERTO, BAUD, timeout=0.01)
@@ -61,8 +87,8 @@ sesgo = suma / n
 print("Listo. Gestos: saludo lateral = 'Hola', bajar la palma = 'Yo soy ...'")
 
 q = np.array([1.0, 0, 0, 0])
-hola, baja = DetectorHola(), DetectorBajada()
-t_prev, t_hola, t_dbg = None, -1e9, 0.0
+rec = Reconocedor()
+t_prev, t_dbg = None, 0.0
 pico = np.zeros(3)
 
 while True:
@@ -72,10 +98,10 @@ while True:
         if t_prev is not None and 0 < t - t_prev < 0.5:
             q = actualizar(q, np.array([ax, ay, az]), np.radians(g), t - t_prev)
             elev = elevacion_deg(q, HAND_FWD)
-            if hola.actualizar(t, g):
-                t_hola = t
+            gesto = rec.actualizar(t, g, elev)
+            if gesto == "hola":
                 decir("Hola")
-            if baja.actualizar(t, elev) and t - t_hola > 1.0:   # ignora rebotes del saludo
+            elif gesto == "bajada":
                 decir(f"Yo soy {NOMBRE}")
             if DEBUG:
                 pico = np.maximum(pico, np.abs(g))

@@ -61,3 +61,33 @@ class DetectorBajada:
             self.hist.clear()
             return True
         return False
+
+
+class Reconocedor:
+    """Combina ambos detectores y decide que gesto se dijo.
+
+    El saludo tambien mueve la mano hacia abajo, asi que una bajada no se confirma al
+    instante: espera `espera_s` y se descarta si en ese tiempo aparece un "Hola".
+    Tambien se ignoran las bajadas en `tras_hola_s` despues de un saludo (rebotes).
+    """
+
+    def __init__(self, espera_s=0.8, tras_hola_s=1.0):
+        self.hola = DetectorHola()
+        self.baja = DetectorBajada()
+        self.espera = espera_s
+        self.tras_hola = tras_hola_s
+        self.t_hola = -1e9
+        self.t_bajada = None                   # bajada vista, pendiente de confirmar
+
+    def actualizar(self, t, g, elev_deg):
+        """Devuelve "hola", "bajada" o None."""
+        if self.hola.actualizar(t, g):
+            self.t_hola = t
+            self.t_bajada = None               # la bajada era parte del saludo
+            return "hola"
+        if self.baja.actualizar(t, elev_deg) and t - self.t_hola > self.tras_hola:
+            self.t_bajada = t
+        if self.t_bajada is not None and t - self.t_bajada >= self.espera:
+            self.t_bajada = None
+            return "bajada"
+        return None

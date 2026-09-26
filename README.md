@@ -35,7 +35,8 @@ tener que volver a buscarlo en wikis, y explica qué funciona, qué está sin pr
 ```
 firmware/imu_stream/imu_stream.ino   Lee el IMU y manda "millis,ax,ay,az,gx,gy,gz" ~100 veces/s
 python/fusion.py                     Filtro tipo Mahony (cuaterniones) + elevación de los dedos
-python/gestos.py                     DetectorHola y DetectorBajada
+python/config.py                     PUERTO y HAND_FWD compartidos por todos los scripts
+python/gestos.py                     DetectorHola, DetectorBajada y Reconocedor (decide entre ambos)
 python/reconocer_gestos.py           Programa principal: lee USB, detecta gestos, imprime/dice palabras
 python/demo_mano_3d.py               Mano 3D en el navegador para validar ejes y orientación
 python/test_sim.py                   Pruebas con datos simulados (no requiere hardware)
@@ -214,7 +215,8 @@ los dedos**; `HAND_UP` sale de la pantalla del reloj (dorso de la mano). Para va
 1. Corre `demo_mano_3d.py`, con el reloj puesto y la mano en posición neutra presiona **z** (centra la dirección horizontal).
 2. Sube y baja la palma: debe subir y bajar la mano virtual. Si sale al revés, presiona **i** (invierte el signo de `HAND_FWD`).
 3. Si el giro de la muñeca sale al revés, prueba `HAND_UP = [0, 0, -1]`.
-4. Copia el `HAND_FWD` que funcionó a `reconocer_gestos.py` (`HAND_FWD = ...`). **Debe ser el mismo en ambos**.
+4. Al presionar **i**, la consola imprime la línea `HAND_FWD = ...` exacta: cópiala a `python/config.py`.
+   Ambos scripts la leen de ahí, así que ya no pueden quedar distintos.
    Candidatos: `[0,±1,0]` o `[±1,0,0]`.
 
 **Límite conocido:** sin magnetómetro, el giro alrededor del eje vertical (yaw) **se desvía lentamente**.
@@ -249,7 +251,9 @@ si pierden ≥ 30° en ≤ 0.6 s, es una bajada rápida. Depende de `HAND_FWD` c
 | `ventana_s` | 0.6 | En cuánto tiempo (más chico = más "rápido") |
 | `enfriamiento_s` | 1.5 | Pausa tras detectar |
 
-`reconocer_gestos.py` ignora una "bajada" que ocurra menos de 1 s después de un "Hola", porque el saludo mueve la muñeca.
+`Reconocedor` (en `gestos.py`) evita confundirlos, porque el saludo también mueve la muñeca: ignora una "bajada" que
+ocurra menos de 1 s después de un "Hola" y, además, no confirma una bajada hasta 0.8 s después; si en ese tiempo
+aparece un saludo, la descarta. Por eso "Yo soy" suena con ~0.8 s de retraso.
 
 ### Pruebas realizadas ([simulado])
 `python/test_sim.py` simula un cuerpo rígido con datos de acelerómetro y giroscopio sintéticos:
@@ -267,7 +271,8 @@ tendrá otra amplitud y velocidad. Usa `python reconocer_gestos.py --debug`: cad
 actual y el pico del giroscopio por eje, para ajustar los umbrales con datos reales.
 
 ### Salida de palabras
-`decir()` imprime siempre y, si `pyttsx3` está instalado, además habla (voz offline del sistema; en Windows usa las
+`decir()` imprime siempre y, si `pyttsx3` está instalado, además habla en un hilo aparte (así no frena la lectura del
+reloj) (voz offline del sistema; en Windows usa las
 voces instaladas, para español hay que tener una voz en español). Alternativas: `gTTS` (necesita internet),
 o mandar la palabra a una interfaz web. Cambia `NOMBRE` en `reconocer_gestos.py`.
 
@@ -277,7 +282,7 @@ o mandar la palabra a una interfaz web. Cambia `NOMBRE` en `reconocer_gestos.py`
 
 1. Arduino IDE: ajustes de la sección 4, abre `firmware/imu_stream/imu_stream.ino`, sube.
 2. Cierra el Monitor Serie y anota el puerto COM.
-3. Edita `PUERTO`, `NOMBRE` y `HAND_FWD` en `python/reconocer_gestos.py` (y `PUERTO` en `demo_mano_3d.py`).
+3. Edita `PUERTO` y `HAND_FWD` en `python/config.py`, y `NOMBRE` en `python/reconocer_gestos.py`.
 4. `python demo_mano_3d.py` → valida ejes (sección 7).
 5. `python reconocer_gestos.py --debug` → prueba los gestos y ajusta umbrales.
 
